@@ -1,0 +1,98 @@
+---
+title: "P3_SingleCellCourse2023"
+output: html_document
+date: "2023-08-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Prostate cancer single-cell data analysis: Reading the data, QC and Normalization
+
+```{r inlcude=TRUE, warning=FALSE, message=FALSE}
+#Libraries
+library(scRNAseq) 
+library(DropletUtils) 
+library(Matrix) 
+library(AnnotationHub) 
+library(scater) 
+library(BiocFileCache)
+library(EnsDb.Hsapiens.v86)
+library(dplyr) 
+library(scran)
+```
+
+#Setting the working directory 
+```{r}
+setwd("/Users/jrenewong/Desktop/P3_SC2023/")
+getwd() #Confirmation
+```
+
+#Reading input file and change it to a Single-Cell object
+```{r}
+mat <- read.delim(
+  "data/GSE157703_RAW/GSM4773521_PCa1_gene_counts_matrix.txt", sep = ' ')
+mat <- as.matrix(mat)
+sce <- SingleCellExperiment::SingleCellExperiment(
+  assays = list(counts = mat))
+sce
+```
+
+#Quality Control from mitochondrial genes
+```{r}
+GeneNames <- rownames(sce@assays@data@listData$counts)
+MitGenes <- GeneNames[which(grepl(pattern = "^MT-", x = GeneNames, perl = F)==TRUE)]
+print(MitGenes)
+stats <- perCellQCMetrics(sce,
+                          subsets = list(Mito = rownames(sce) %in% MitGenes)
+)
+high.mito <- isOutlier(stats$subsets_Mito_percent,
+                       type = "higher"
+)
+sce <- sce[, !high.mito]
+```
+
+#Deconvolution normaliztion
+```{r}
+# Estimation of normalization factors
+lib.sf.sce <- librarySizeFactors(sce)
+# Examination of library sizes that we estimated
+summary(lib.sf.sce)
+hist(log10(lib.sf.sce), xlab = "Log10[Library sce]", col = "grey80")
+
+
+## Calculando el tamaño de las librerias
+ls.sce <- colSums(counts(sce))
+plot(ls.sce, lib.sf.sce, log="xy",
+     xlab="Library size", ylab="Size factor")
+
+# Deconvolution
+clust.sce <- quickCluster(sce)
+
+# Calculation of size factors for deconvolution
+deconv.sf.zeisel <-
+  calculateSumFactors(sce, clusters = clust.sce, min.mean = 0.1)
+
+# Distribution
+summary(deconv.sf.zeisel)
+
+hist(log10(deconv.sf.zeisel),
+     xlab = "Log10[Deconvolution size factor]",
+     col = "grey80"
+)
+
+plot(lib.sf.sce,
+     deconv.sf.zeisel,
+     xlab = "Library size factor",
+     ylab = "Deconvolution size factor",
+     log = "xy",
+     pch = 16,
+     cex = 0.2,
+     col="darkblue")
+
+abline(a = 0, b = 1, col = "red")
+
+```
+
+
